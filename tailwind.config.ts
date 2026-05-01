@@ -22,6 +22,16 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          glow: "hsl(var(--primary-glow))",
+        },
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))",
+        panel: {
+          bg: "hsl(var(--panel-bg))",
+          card: "hsl(var(--panel-card))",
+          text: "hsl(var(--panel-text))",
+          highlight: "hsl(var(--panel-highlight))",
+          priority: "hsl(var(--panel-priority))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -84,6 +94,10 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+      },
+      fontFamily: {
+        display: ["Inter", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
       },
     },
   },
