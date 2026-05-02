@@ -248,6 +248,30 @@ const Config = () => {
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label htmlFor="logo">URL da logo</Label>
+                    <div className="flex gap-3 items-start">
+                      <Input
+                        id="logo"
+                        value={config.logoUrl}
+                        onChange={(e) => update({ logoUrl: e.target.value })}
+                        placeholder="https://exemplo.com/logo.png"
+                      />
+                      {config.logoUrl && (
+                        <img
+                          src={config.logoUrl}
+                          alt="Pré-visualização da logo"
+                          className="h-10 max-w-[120px] object-contain rounded border border-border bg-muted/40 p-1"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      A logo aparece no cabeçalho do painel, ao lado da data e hora.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="ticker">Letreiro digital (rodapé)</Label>
                     <Textarea
                       id="ticker"
