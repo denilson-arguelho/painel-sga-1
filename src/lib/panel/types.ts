@@ -26,6 +26,8 @@ export type PanelConfig = {
   subtitle: string;
   /** Texto rotativo do rodapé. */
   ticker: string;
+  /** URL da logo exibida no cabeçalho (opcional). */
+  logoUrl: string;
   /** Layout do painel. */
   layout: LayoutMode;
 
