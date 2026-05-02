@@ -39,8 +39,8 @@ const Index = () => {
   const isHorizontal = config.layout === "horizontal";
 
   return (
-    <main className="flex h-screen w-screen flex-col panel-bg overflow-hidden">
-      <HeaderClock title={config.title} subtitle={config.subtitle} />
+    <main className="group/panel flex h-screen w-screen flex-col panel-bg overflow-hidden">
+      <HeaderClock title={config.title} subtitle={config.subtitle} logoUrl={config.logoUrl} />
 
       <section
         className={
@@ -73,7 +73,7 @@ const Index = () => {
 
       <Link
         to="/config"
-        className="fixed bottom-4 right-4 inline-flex items-center gap-2 rounded-full bg-card/80 backdrop-blur border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors shadow-card"
+        className="fixed bottom-4 right-4 inline-flex items-center gap-2 rounded-full bg-card/90 backdrop-blur border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-all duration-300 shadow-card opacity-0 pointer-events-none group-hover/panel:opacity-100 group-hover/panel:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
         aria-label="Abrir configurações"
       >
         <Settings className="h-4 w-4" />
