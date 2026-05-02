@@ -67,6 +67,7 @@ export const DEFAULT_CONFIG: PanelConfig = {
   ticker:
     "Bem-vindo! Aguarde sua senha ser chamada. • Em caso de dúvida, procure a recepção. • Mantenha o ambiente silencioso.",
   layout: "horizontal",
+  logoUrl: "",
   colorBg: "210 40% 98%",
   colorCard: "0 0% 100%",
   colorText: "215 35% 15%",
