@@ -46,6 +46,11 @@ export type PanelConfig = {
   sgaUnitId: string;
   sgaPollInterval: number; // ms
   sgaEnabled: boolean;
+  /** Autenticação OAuth2 do Novo SGA v2.1+. */
+  sgaUsername: string;
+  sgaPassword: string;
+  sgaClientId: string;
+  sgaClientSecret: string;
 
   /** Áudio. */
   speechEnabled: boolean;
