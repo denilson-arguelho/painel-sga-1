@@ -283,35 +283,78 @@ const Config = () => {
           {tab === "sga" && (
             <Card>
               <CardHeader>
-                <CardTitle>Conexão Novo SGA</CardTitle>
+                <CardTitle>Conexão Novo SGA (v2.1+)</CardTitle>
                 <CardDescription>
                   Quando desativado, o painel roda em modo demo com senhas simuladas.
+                  Autenticação via OAuth2 (password grant).
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="sga-enabled">Ativar polling REST</Label>
+                  <Label htmlFor="sga-enabled">Ativar conexão com servidor</Label>
                   <Switch
                     id="sga-enabled"
                     checked={config.sgaEnabled}
                     onCheckedChange={(v) => update({ sgaEnabled: v })}
                   />
                 </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="sga-url">URL do servidor SGA</Label>
+                  <Label htmlFor="sga-url">URL do servidor</Label>
                   <Input
                     id="sga-url"
                     value={config.sgaUrl}
                     onChange={(e) => update({ sgaUrl: e.target.value })}
-                    placeholder="https://sga.exemplo.com"
+                    placeholder="http://172.16.138.64"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    O painel chamará{" "}
-                    <code className="font-mono">
-                      {config.sgaUrl || "<URL>"}/api/v1/painel/{config.sgaUnitId}
-                    </code>
-                  </p>
                 </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="sga-user">Usuário</Label>
+                    <Input
+                      id="sga-user"
+                      value={config.sgaUsername}
+                      onChange={(e) => update({ sgaUsername: e.target.value })}
+                      placeholder="admin"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sga-pass">Senha</Label>
+                    <Input
+                      id="sga-pass"
+                      type="password"
+                      value={config.sgaPassword}
+                      onChange={(e) => update({ sgaPassword: e.target.value })}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="sga-cid">Client ID</Label>
+                    <Input
+                      id="sga-cid"
+                      value={config.sgaClientId}
+                      onChange={(e) => update({ sgaClientId: e.target.value })}
+                      placeholder="a2c94123d05fd01f3690b31f83bd59fe"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sga-csecret">Client Secret</Label>
+                    <Input
+                      id="sga-csecret"
+                      type="password"
+                      value={config.sgaClientSecret}
+                      onChange={(e) => update({ sgaClientSecret: e.target.value })}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </div>
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="sga-unit">ID da unidade</Label>
@@ -319,6 +362,7 @@ const Config = () => {
                       id="sga-unit"
                       value={config.sgaUnitId}
                       onChange={(e) => update({ sgaUnitId: e.target.value })}
+                      placeholder="1"
                     />
                   </div>
                   <div className="space-y-2">
@@ -335,10 +379,19 @@ const Config = () => {
                     />
                   </div>
                 </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Token: <code className="font-mono">{config.sgaUrl || "<URL>"}/api/oauth/v2/token</code>
+                  <br />
+                  Painel: <code className="font-mono">{config.sgaUrl || "<URL>"}/api/v1/unidades/{config.sgaUnitId}/painel</code>
+                </p>
+
                 <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-foreground">
                   <strong>CORS:</strong> o servidor SGA precisa permitir requisições do
-                  domínio deste painel. Se você ver erros de rede, configure o cabeçalho{" "}
+                  domínio deste painel. Se você ver erros de rede, configure{" "}
                   <code className="font-mono">Access-Control-Allow-Origin</code> no servidor.
+                  Para servidores HTTP locais (ex.: <code>http://172.16.x.x</code>), o navegador pode bloquear
+                  o acesso a partir de páginas HTTPS.
                 </div>
               </CardContent>
             </Card>

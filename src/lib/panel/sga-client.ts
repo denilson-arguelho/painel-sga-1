@@ -1,10 +1,10 @@
 /**
- * Cliente SGA via polling REST.
+ * Cliente Novo SGA v2.1+ via OAuth2 (password grant) + polling REST.
  *
- * Este módulo busca periodicamente as últimas senhas chamadas e dispara
- * callback quando detecta uma chamada nova. Suporta o formato do Novo SGA
- * (endpoint /api/v1/painel/{unidade}) e degrada graciosamente para um
- * formato genérico { tickets: [...] }.
+ * Fluxo:
+ *  1. POST {url}/api/oauth/v2/token com grant_type=password (client_id/secret + user/pass)
+ *  2. GET  {url}/api/v1/unidades/{unitId}/painel  com Bearer token
+ *  3. Refresh token automático antes de expirar.
  *
  * Em modo demo (sem URL configurada), gera senhas simuladas para teste.
  */
@@ -19,6 +19,10 @@ type SgaOptions = {
   url: string;
   unitId: string;
   intervalMs: number;
+  username?: string;
+  password?: string;
+  clientId?: string;
+  clientSecret?: string;
   onSnapshot: (snap: SgaSnapshot) => void;
   onCall: (ticket: Ticket) => void;
   onError?: (err: Error) => void;
@@ -26,19 +30,19 @@ type SgaOptions = {
 
 function normalize(raw: any, idx = 0): Ticket | null {
   if (!raw) return null;
-  // Novo SGA: { sigla, numero, local, servico, prioridade, ... }
+  // Novo SGA v2.1+: senha vem em raw.senha = { sigla, numero }, local em raw.local, etc.
+  const senha = raw.senha ?? raw;
   const prefix =
-    raw.sigla ?? raw.prefix ?? raw.servicoSigla ?? raw.servico_sigla ?? "";
-  const numeroRaw = raw.numero ?? raw.number ?? raw.senha ?? "";
+    senha.sigla ?? raw.sigla ?? raw.prefix ?? raw.servicoSigla ?? raw.servico_sigla ?? "";
+  const numeroRaw = senha.numero ?? raw.numero ?? raw.number ?? "";
   const number = String(numeroRaw).padStart(3, "0");
   const place =
-    raw.local ?? raw.guiche ?? raw.mesa ?? raw.place ?? "Atendimento";
-  const service = raw.servico ?? raw.service ?? raw.nomeServico ?? "";
-  const priorityRaw = raw.prioridade ?? raw.priority ?? "";
+    raw.local?.nome ?? raw.local ?? raw.guiche ?? raw.mesa ?? raw.place ?? "Atendimento";
+  const service = raw.servico?.nome ?? raw.servico ?? raw.service ?? "";
+  const priorityRaw = raw.prioridade?.nome ?? raw.prioridade ?? raw.priority ?? "";
+  const peso = raw.prioridade?.peso ?? raw.peso ?? 0;
   const priority: Ticket["priority"] =
-    String(priorityRaw).toLowerCase().includes("prior") ||
-    raw.prioridadeNome === "Prioridade" ||
-    raw.peso > 0
+    String(priorityRaw).toLowerCase().includes("prior") || peso > 0
       ? "prioridade"
       : "normal";
   if (!prefix && !numeroRaw) return null;
@@ -57,42 +61,90 @@ function normalize(raw: any, idx = 0): Ticket | null {
 }
 
 function parsePayload(data: any): SgaSnapshot {
-  // Forma 1: Novo SGA — { atual: {...}, ultimas: [...] }
-  if (data?.atual !== undefined || data?.ultimas !== undefined) {
-    const current = normalize(data.atual);
-    const last = (data.ultimas ?? []).map((r: any, i: number) => normalize(r, i)).filter(Boolean) as Ticket[];
-    return { current, last };
-  }
-  // Forma 2: { current, last } / { tickets }
-  if (Array.isArray(data?.tickets)) {
-    const tickets = data.tickets.map((r: any, i: number) => normalize(r, i)).filter(Boolean) as Ticket[];
+  // Novo SGA v2.1+: { data: { senhasChamadas: [...] } } ou { senhasChamadas: [...] }
+  const payload = data?.data ?? data;
+  if (Array.isArray(payload?.senhasChamadas)) {
+    const tickets = payload.senhasChamadas
+      .map((r: any, i: number) => normalize(r, i))
+      .filter(Boolean) as Ticket[];
     return { current: tickets[0] ?? null, last: tickets.slice(1) };
   }
-  if (data?.current !== undefined) {
-    return {
-      current: normalize(data.current),
-      last: (data.last ?? []).map((r: any, i: number) => normalize(r, i)).filter(Boolean) as Ticket[],
-    };
+  if (payload?.atual !== undefined || payload?.ultimas !== undefined) {
+    const current = normalize(payload.atual);
+    const last = (payload.ultimas ?? [])
+      .map((r: any, i: number) => normalize(r, i))
+      .filter(Boolean) as Ticket[];
+    return { current, last };
   }
-  // Forma 3: array bruto
-  if (Array.isArray(data)) {
-    const tickets = data.map((r: any, i: number) => normalize(r, i)).filter(Boolean) as Ticket[];
+  if (Array.isArray(payload?.tickets)) {
+    const tickets = payload.tickets.map((r: any, i: number) => normalize(r, i)).filter(Boolean) as Ticket[];
+    return { current: tickets[0] ?? null, last: tickets.slice(1) };
+  }
+  if (Array.isArray(payload)) {
+    const tickets = payload.map((r: any, i: number) => normalize(r, i)).filter(Boolean) as Ticket[];
     return { current: tickets[0] ?? null, last: tickets.slice(1) };
   }
   return { current: null, last: [] };
+}
+
+type TokenInfo = { access_token: string; expires_at: number };
+
+async function fetchToken(opts: SgaOptions): Promise<TokenInfo> {
+  const base = opts.url.replace(/\/$/, "");
+  const body = new URLSearchParams({
+    grant_type: "password",
+    client_id: opts.clientId ?? "",
+    client_secret: opts.clientSecret ?? "",
+    username: opts.username ?? "",
+    password: opts.password ?? "",
+  });
+  const res = await fetch(`${base}/api/oauth/v2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    body,
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`OAuth ${res.status}: ${txt || res.statusText}`);
+  }
+  const data = await res.json();
+  if (!data.access_token) throw new Error("Resposta OAuth sem access_token");
+  const ttl = Number(data.expires_in ?? 3600) * 1000;
+  return { access_token: data.access_token, expires_at: Date.now() + ttl - 30_000 };
 }
 
 export function startSgaPolling(opts: SgaOptions): () => void {
   let stopped = false;
   let timer: number | undefined;
   let lastCurrentId: string | null = null;
+  let token: TokenInfo | null = null;
+
+  const useAuth = !!(opts.clientId && opts.clientSecret && opts.username && opts.password);
+
+  async function ensureToken(): Promise<string | null> {
+    if (!useAuth) return null;
+    if (!token || Date.now() >= token.expires_at) {
+      token = await fetchToken(opts);
+    }
+    return token.access_token;
+  }
 
   async function tick() {
     if (stopped) return;
     try {
+      const access = await ensureToken();
       const base = opts.url.replace(/\/$/, "");
-      const endpoint = `${base}/api/v1/painel/${encodeURIComponent(opts.unitId)}`;
-      const res = await fetch(endpoint, { headers: { Accept: "application/json" } });
+      // Novo SGA v2.1+: /api/v1/unidades/{id}/painel; fallback compat: /api/v1/painel/{id}
+      const endpoint = useAuth
+        ? `${base}/api/v1/unidades/${encodeURIComponent(opts.unitId)}/painel`
+        : `${base}/api/v1/painel/${encodeURIComponent(opts.unitId)}`;
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (access) headers.Authorization = `Bearer ${access}`;
+      const res = await fetch(endpoint, { headers });
+      if (res.status === 401 && useAuth) {
+        token = null; // força refresh no próximo tick
+        throw new Error("SGA 401 — token inválido, renovando...");
+      }
       if (!res.ok) throw new Error(`SGA HTTP ${res.status}`);
       const data = await res.json();
       const snap = parsePayload(data);

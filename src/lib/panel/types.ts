@@ -46,6 +46,11 @@ export type PanelConfig = {
   sgaUnitId: string;
   sgaPollInterval: number; // ms
   sgaEnabled: boolean;
+  /** Autenticação OAuth2 do Novo SGA v2.1+. */
+  sgaUsername: string;
+  sgaPassword: string;
+  sgaClientId: string;
+  sgaClientSecret: string;
 
   /** Áudio. */
   speechEnabled: boolean;
@@ -71,6 +76,10 @@ export const DEFAULT_CONFIG: PanelConfig = {
   sgaUnitId: "1",
   sgaPollInterval: 3000,
   sgaEnabled: false,
+  sgaUsername: "",
+  sgaPassword: "",
+  sgaClientId: "",
+  sgaClientSecret: "",
   speechEnabled: true,
   chimeEnabled: true,
   speechRate: 0.95,
