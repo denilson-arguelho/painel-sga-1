@@ -321,6 +321,7 @@ const Config = () => {
           )}
 
           {tab === "sga" && (
+            <>
             <Card>
               <CardHeader>
                 <CardTitle>Conexão Novo SGA (v2.1+)</CardTitle>
