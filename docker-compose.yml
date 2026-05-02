@@ -1,0 +1,8 @@
+version: '3.8'
+services:
+  painel-app:
+    build: .
+    container_name: painel_lovable
+    ports:
+      - "8004:80"
+    restart: always
