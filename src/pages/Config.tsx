@@ -435,6 +435,68 @@ const Config = () => {
                 </div>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Unidade & Serviços</CardTitle>
+                <CardDescription>
+                  Informações puxadas em tempo real do servidor SGA conectado.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!config.sgaEnabled && (
+                  <p className="text-sm text-muted-foreground">
+                    Ative a conexão com o servidor para visualizar a unidade e serviços.
+                  </p>
+                )}
+                {config.sgaEnabled && sgaError && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive-foreground">
+                    {sgaError}
+                  </div>
+                )}
+                {config.sgaEnabled && !sgaError && (
+                  <>
+                    <div className="space-y-1">
+                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Unidade
+                      </Label>
+                      <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm font-medium">
+                        {snapshot.unidade ?? (
+                          <span className="text-muted-foreground italic">
+                            Aguardando dados do servidor…
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Serviços que o painel vai chamar
+                      </Label>
+                      {snapshot.servicos && snapshot.servicos.length > 0 ? (
+                        <ul className="divide-y divide-border rounded-md border border-border bg-card">
+                          {snapshot.servicos.map((s, i) => (
+                            <li
+                              key={`${s.sigla}-${i}`}
+                              className="flex items-center gap-3 px-3 py-2 text-sm"
+                            >
+                              <span className="inline-flex h-7 min-w-[2.5rem] items-center justify-center rounded bg-primary px-2 font-mono text-xs font-bold text-primary-foreground">
+                                {s.sigla || "—"}
+                              </span>
+                              <span className="truncate">{s.nome || "Sem nome"}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm text-muted-foreground italic">
+                          Aguardando lista de serviços do servidor…
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+            </>
           )}
 
           {tab === "som" && (
