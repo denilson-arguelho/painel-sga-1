@@ -61,6 +61,7 @@ function ColorField({
 
 const Config = () => {
   const [config, update] = usePanelConfig();
+  const { snapshot, error: sgaError } = usePanel();
   const [tab, setTab] = useState<"interface" | "media" | "sga" | "som">("interface");
 
   useEffect(() => {
