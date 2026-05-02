@@ -89,8 +89,30 @@ function parsePayload(data: any): SgaSnapshot {
 
 type TokenInfo = { access_token: string; expires_at: number };
 
+function checkMixedContent(targetUrl: string): void {
+  if (typeof window === "undefined") return;
+  const pageHttps = window.location.protocol === "https:";
+  const targetHttp = targetUrl.toLowerCase().startsWith("http://");
+  if (pageHttps && targetHttp) {
+    throw new Error(
+      "Mixed Content bloqueado: o painel está em HTTPS mas o SGA está em HTTP. " +
+      "Solução: rode o painel na mesma rede via HTTP (npm run preview) ou exponha o SGA via HTTPS."
+    );
+  }
+}
+
+function isPrivateIp(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|localhost$)/.test(host);
+  } catch {
+    return false;
+  }
+}
+
 async function fetchToken(opts: SgaOptions): Promise<TokenInfo> {
   const base = opts.url.replace(/\/$/, "");
+  checkMixedContent(base);
   const body = new URLSearchParams({
     grant_type: "password",
     client_id: opts.clientId ?? "",
@@ -98,11 +120,22 @@ async function fetchToken(opts: SgaOptions): Promise<TokenInfo> {
     username: opts.username ?? "",
     password: opts.password ?? "",
   });
-  const res = await fetch(`${base}/api/oauth/v2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-    body,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${base}/api/oauth/v2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body,
+    });
+  } catch (e) {
+    if (isPrivateIp(base)) {
+      throw new Error(
+        `Servidor inacessível (${base}). É um IP de rede local — o painel precisa rodar na mesma rede do SGA. ` +
+        `Faça build e abra via "npm run preview" no PC dentro da rede.`
+      );
+    }
+    throw new Error(`Falha de rede ao conectar em ${base}: ${(e as Error).message}`);
+  }
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
     throw new Error(`OAuth ${res.status}: ${txt || res.statusText}`);
