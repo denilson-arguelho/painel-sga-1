@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft, RotateCcw, Volume2 } from "lucide-react";
+import { ArrowLeft, RotateCcw, Save, Volume2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { usePanelConfig, resetConfig } from "@/lib/panel/config-store";
+import { usePanel } from "@/hooks/use-panel";
 import { hexToHslString, hslStringToHex } from "@/lib/panel/theme";
 import { enqueueAnnouncement, unlockAudio } from "@/lib/panel/voice-queue";
 import { toast } from "@/hooks/use-toast";
