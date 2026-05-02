@@ -184,6 +184,26 @@ export function startSgaPolling(opts: SgaOptions): () => void {
     return token.access_token;
   }
 
+  let cachedMeta: { unidade?: string; servicos?: SgaServico[] } | null = null;
+
+  async function fetchMeta(access: string | null, base: string): Promise<typeof cachedMeta> {
+    if (cachedMeta) return cachedMeta;
+    try {
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (access) headers.Authorization = `Bearer ${access}`;
+      const res = await fetch(
+        `${base}/api/v1/unidades/${encodeURIComponent(opts.unitId)}`,
+        { headers }
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      cachedMeta = parseUnidadeServicos(data);
+      return cachedMeta;
+    } catch {
+      return null;
+    }
+  }
+
   async function tick() {
     if (stopped) return;
     try {
@@ -203,6 +223,14 @@ export function startSgaPolling(opts: SgaOptions): () => void {
       if (!res.ok) throw new Error(`SGA HTTP ${res.status}`);
       const data = await res.json();
       const snap = parsePayload(data);
+      // Mescla metadados (unidade + serviços) — busca uma vez e cacheia.
+      if (!snap.unidade || !snap.servicos?.length) {
+        const meta = await fetchMeta(access, base);
+        if (meta) {
+          snap.unidade = snap.unidade ?? meta.unidade;
+          snap.servicos = snap.servicos?.length ? snap.servicos : meta.servicos;
+        }
+      }
       opts.onSnapshot(snap);
       if (snap.current && snap.current.id !== lastCurrentId) {
         lastCurrentId = snap.current.id;
