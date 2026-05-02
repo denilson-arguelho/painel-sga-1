@@ -64,31 +64,49 @@ function normalize(raw: any, idx = 0): Ticket | null {
   };
 }
 
+function parseUnidadeServicos(data: any): { unidade?: string; servicos?: SgaServico[] } {
+  const payload = data?.data ?? data;
+  const unidade =
+    payload?.unidade?.nome ?? payload?.nomeUnidade ?? payload?.unidadeNome ?? undefined;
+  let servicosRaw: any[] | undefined;
+  if (Array.isArray(payload?.servicos)) servicosRaw = payload.servicos;
+  else if (Array.isArray(payload?.unidade?.servicos)) servicosRaw = payload.unidade.servicos;
+  const servicos = servicosRaw
+    ?.map((s: any) => ({
+      sigla: String(s.sigla ?? s.servico?.sigla ?? "").trim(),
+      nome: String(s.nome ?? s.servico?.nome ?? "").trim(),
+    }))
+    .filter((s) => s.sigla || s.nome);
+  return { unidade, servicos };
+}
+
 function parsePayload(data: any): SgaSnapshot {
   // Novo SGA v2.1+: { data: { senhasChamadas: [...] } } ou { senhasChamadas: [...] }
   const payload = data?.data ?? data;
+  const meta = parseUnidadeServicos(data);
+  const wrap = (snap: SgaSnapshot): SgaSnapshot => ({ ...snap, ...meta });
   if (Array.isArray(payload?.senhasChamadas)) {
     const tickets = payload.senhasChamadas
       .map((r: any, i: number) => normalize(r, i))
       .filter(Boolean) as Ticket[];
-    return { current: tickets[0] ?? null, last: tickets.slice(1) };
+    return wrap({ current: tickets[0] ?? null, last: tickets.slice(1) });
   }
   if (payload?.atual !== undefined || payload?.ultimas !== undefined) {
     const current = normalize(payload.atual);
     const last = (payload.ultimas ?? [])
       .map((r: any, i: number) => normalize(r, i))
       .filter(Boolean) as Ticket[];
-    return { current, last };
+    return wrap({ current, last });
   }
   if (Array.isArray(payload?.tickets)) {
     const tickets = payload.tickets.map((r: any, i: number) => normalize(r, i)).filter(Boolean) as Ticket[];
-    return { current: tickets[0] ?? null, last: tickets.slice(1) };
+    return wrap({ current: tickets[0] ?? null, last: tickets.slice(1) });
   }
   if (Array.isArray(payload)) {
     const tickets = payload.map((r: any, i: number) => normalize(r, i)).filter(Boolean) as Ticket[];
-    return { current: tickets[0] ?? null, last: tickets.slice(1) };
+    return wrap({ current: tickets[0] ?? null, last: tickets.slice(1) });
   }
-  return { current: null, last: [] };
+  return wrap({ current: null, last: [] });
 }
 
 type TokenInfo = { access_token: string; expires_at: number };
