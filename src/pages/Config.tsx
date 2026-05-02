@@ -107,17 +107,31 @@ const Config = () => {
               </p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              resetConfig();
-              toast({ title: "Configurações restauradas." });
-            }}
-          >
-            <RotateCcw className="h-4 w-4 mr-1" />
-            Restaurar padrão
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                resetConfig();
+                toast({ title: "Configurações restauradas." });
+              }}
+            >
+              <RotateCcw className="h-4 w-4 mr-1" />
+              Restaurar padrão
+            </Button>
+            <Button
+              size="sm"
+              onClick={() =>
+                toast({
+                  title: "Configurações salvas",
+                  description: "Todas as alterações foram aplicadas.",
+                })
+              }
+            >
+              <Save className="h-4 w-4 mr-1" />
+              Salvar
+            </Button>
+          </div>
         </div>
       </header>
 
