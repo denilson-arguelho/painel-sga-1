@@ -10,9 +10,13 @@
  */
 import type { Ticket } from "./types";
 
+export type SgaServico = { sigla: string; nome: string };
+
 export type SgaSnapshot = {
   current: Ticket | null;
   last: Ticket[];
+  unidade?: string;
+  servicos?: SgaServico[];
 };
 
 type SgaOptions = {
@@ -60,31 +64,49 @@ function normalize(raw: any, idx = 0): Ticket | null {
   };
 }
 
+function parseUnidadeServicos(data: any): { unidade?: string; servicos?: SgaServico[] } {
+  const payload = data?.data ?? data;
+  const unidade =
+    payload?.unidade?.nome ?? payload?.nomeUnidade ?? payload?.unidadeNome ?? undefined;
+  let servicosRaw: any[] | undefined;
+  if (Array.isArray(payload?.servicos)) servicosRaw = payload.servicos;
+  else if (Array.isArray(payload?.unidade?.servicos)) servicosRaw = payload.unidade.servicos;
+  const servicos = servicosRaw
+    ?.map((s: any) => ({
+      sigla: String(s.sigla ?? s.servico?.sigla ?? "").trim(),
+      nome: String(s.nome ?? s.servico?.nome ?? "").trim(),
+    }))
+    .filter((s) => s.sigla || s.nome);
+  return { unidade, servicos };
+}
+
 function parsePayload(data: any): SgaSnapshot {
   // Novo SGA v2.1+: { data: { senhasChamadas: [...] } } ou { senhasChamadas: [...] }
   const payload = data?.data ?? data;
+  const meta = parseUnidadeServicos(data);
+  const wrap = (snap: SgaSnapshot): SgaSnapshot => ({ ...snap, ...meta });
   if (Array.isArray(payload?.senhasChamadas)) {
     const tickets = payload.senhasChamadas
       .map((r: any, i: number) => normalize(r, i))
       .filter(Boolean) as Ticket[];
-    return { current: tickets[0] ?? null, last: tickets.slice(1) };
+    return wrap({ current: tickets[0] ?? null, last: tickets.slice(1) });
   }
   if (payload?.atual !== undefined || payload?.ultimas !== undefined) {
     const current = normalize(payload.atual);
     const last = (payload.ultimas ?? [])
       .map((r: any, i: number) => normalize(r, i))
       .filter(Boolean) as Ticket[];
-    return { current, last };
+    return wrap({ current, last });
   }
   if (Array.isArray(payload?.tickets)) {
     const tickets = payload.tickets.map((r: any, i: number) => normalize(r, i)).filter(Boolean) as Ticket[];
-    return { current: tickets[0] ?? null, last: tickets.slice(1) };
+    return wrap({ current: tickets[0] ?? null, last: tickets.slice(1) });
   }
   if (Array.isArray(payload)) {
     const tickets = payload.map((r: any, i: number) => normalize(r, i)).filter(Boolean) as Ticket[];
-    return { current: tickets[0] ?? null, last: tickets.slice(1) };
+    return wrap({ current: tickets[0] ?? null, last: tickets.slice(1) });
   }
-  return { current: null, last: [] };
+  return wrap({ current: null, last: [] });
 }
 
 type TokenInfo = { access_token: string; expires_at: number };
@@ -162,6 +184,26 @@ export function startSgaPolling(opts: SgaOptions): () => void {
     return token.access_token;
   }
 
+  let cachedMeta: { unidade?: string; servicos?: SgaServico[] } | null = null;
+
+  async function fetchMeta(access: string | null, base: string): Promise<typeof cachedMeta> {
+    if (cachedMeta) return cachedMeta;
+    try {
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (access) headers.Authorization = `Bearer ${access}`;
+      const res = await fetch(
+        `${base}/api/v1/unidades/${encodeURIComponent(opts.unitId)}`,
+        { headers }
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      cachedMeta = parseUnidadeServicos(data);
+      return cachedMeta;
+    } catch {
+      return null;
+    }
+  }
+
   async function tick() {
     if (stopped) return;
     try {
@@ -181,6 +223,14 @@ export function startSgaPolling(opts: SgaOptions): () => void {
       if (!res.ok) throw new Error(`SGA HTTP ${res.status}`);
       const data = await res.json();
       const snap = parsePayload(data);
+      // Mescla metadados (unidade + serviços) — busca uma vez e cacheia.
+      if (!snap.unidade || !snap.servicos?.length) {
+        const meta = await fetchMeta(access, base);
+        if (meta) {
+          snap.unidade = snap.unidade ?? meta.unidade;
+          snap.servicos = snap.servicos?.length ? snap.servicos : meta.servicos;
+        }
+      }
       opts.onSnapshot(snap);
       if (snap.current && snap.current.id !== lastCurrentId) {
         lastCurrentId = snap.current.id;
