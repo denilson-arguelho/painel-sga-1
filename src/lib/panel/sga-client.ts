@@ -10,9 +10,13 @@
  */
 import type { Ticket } from "./types";
 
+export type SgaServico = { sigla: string; nome: string };
+
 export type SgaSnapshot = {
   current: Ticket | null;
   last: Ticket[];
+  unidade?: string;
+  servicos?: SgaServico[];
 };
 
 type SgaOptions = {
