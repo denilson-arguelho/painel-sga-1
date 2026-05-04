@@ -1,0 +1,4 @@
+project_id = "hdprrjtgegmzkcrumxri"
+
+[functions.sga-proxy]
+verify_jwt = false
