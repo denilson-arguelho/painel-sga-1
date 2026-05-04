@@ -53,6 +53,8 @@ export type PanelConfig = {
   sgaPassword: string;
   sgaClientId: string;
   sgaClientSecret: string;
+  /** IDs dos serviços que o painel deve chamar (vazio = todos da unidade). */
+  sgaServices: number[];
 
   /** Áudio. */
   speechEnabled: boolean;
