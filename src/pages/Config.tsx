@@ -26,6 +26,14 @@ import { usePanel } from "@/hooks/use-panel";
 import { hexToHslString, hslStringToHex } from "@/lib/panel/theme";
 import { enqueueAnnouncement, unlockAudio } from "@/lib/panel/voice-queue";
 import { toast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  testConnection,
+  fetchServicos,
+  type SgaUnidade,
+  type SgaServico,
+} from "@/lib/panel/sga-client";
+import { Loader2, PlugZap } from "lucide-react";
 
 function ColorField({
   label,
