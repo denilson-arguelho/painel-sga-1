@@ -283,7 +283,9 @@ export function startSgaPolling(opts: SgaOptions): () => void {
           : servicos.map((s) => s.id);
       const qs = ids.length ? `?servicos=${ids.join(",")}` : "";
       const url = `${base}/api/unidades/${encodeURIComponent(opts.unitId)}/painel${qs}`;
-      const res = await fetch(url, {
+      const res = await proxyFetch({
+        url,
+        method: "GET",
         headers: { Accept: "application/json", Authorization: `Bearer ${access}` },
       });
       if (res.status === 401) {
