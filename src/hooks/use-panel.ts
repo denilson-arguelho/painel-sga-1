@@ -56,6 +56,7 @@ export function usePanel() {
         password: config.sgaPassword,
         clientId: config.sgaClientId,
         clientSecret: config.sgaClientSecret,
+        serviceIds: config.sgaServices,
         onSnapshot: setSnapshot,
         onCall: handleCall,
         onError: (e) => setError(e.message),
