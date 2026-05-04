@@ -26,6 +26,14 @@ import { usePanel } from "@/hooks/use-panel";
 import { hexToHslString, hslStringToHex } from "@/lib/panel/theme";
 import { enqueueAnnouncement, unlockAudio } from "@/lib/panel/voice-queue";
 import { toast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  testConnection,
+  fetchServicos,
+  type SgaUnidade,
+  type SgaServico,
+} from "@/lib/panel/sga-client";
+import { Loader2, PlugZap } from "lucide-react";
 
 function ColorField({
   label,
@@ -63,10 +71,76 @@ const Config = () => {
   const [config, update] = usePanelConfig();
   const { snapshot, error: sgaError } = usePanel();
   const [tab, setTab] = useState<"interface" | "media" | "sga" | "som">("interface");
+  const [testing, setTesting] = useState(false);
+  const [unidades, setUnidades] = useState<SgaUnidade[] | null>(null);
+  const [servicosList, setServicosList] = useState<SgaServico[] | null>(null);
+  const [loadingServicos, setLoadingServicos] = useState(false);
 
   useEffect(() => {
     document.title = "Configurações — Painel de Senhas";
   }, []);
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    setUnidades(null);
+    setServicosList(null);
+    try {
+      const { unidades } = await testConnection({
+        url: config.sgaUrl,
+        username: config.sgaUsername,
+        password: config.sgaPassword,
+        clientId: config.sgaClientId,
+        clientSecret: config.sgaClientSecret,
+      });
+      setUnidades(unidades);
+      toast({
+        title: "Conexão estabelecida ✅",
+        description: `${unidades.length} unidade(s) encontrada(s).`,
+      });
+      // Auto-carrega serviços se já houver unidade selecionada.
+      if (config.sgaUnitId) await loadServicos(config.sgaUnitId);
+    } catch (e) {
+      toast({
+        title: "Falha ao conectar",
+        description: (e as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const loadServicos = async (unityId: string) => {
+    setLoadingServicos(true);
+    try {
+      const list = await fetchServicos(
+        {
+          url: config.sgaUrl,
+          username: config.sgaUsername,
+          password: config.sgaPassword,
+          clientId: config.sgaClientId,
+          clientSecret: config.sgaClientSecret,
+        },
+        unityId
+      );
+      setServicosList(list);
+    } catch (e) {
+      toast({
+        title: "Erro ao listar serviços",
+        description: (e as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingServicos(false);
+    }
+  };
+
+  const toggleService = (id: number) => {
+    const current = new Set(config.sgaServices ?? []);
+    if (current.has(id)) current.delete(id);
+    else current.add(id);
+    update({ sgaServices: Array.from(current) });
+  };
 
   const testVoice = () => {
     unlockAudio();
@@ -398,16 +472,37 @@ const Config = () => {
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="sga-unit">ID da unidade</Label>
-                    <Input
-                      id="sga-unit"
-                      value={config.sgaUnitId}
-                      onChange={(e) => update({ sgaUnitId: e.target.value })}
-                      placeholder="1"
-                    />
+                    <Label htmlFor="sga-unit">Unidade</Label>
+                    {unidades && unidades.length > 0 ? (
+                      <Select
+                        value={config.sgaUnitId}
+                        onValueChange={(v) => {
+                          update({ sgaUnitId: v, sgaServices: [] });
+                          loadServicos(v);
+                        }}
+                      >
+                        <SelectTrigger id="sga-unit">
+                          <SelectValue placeholder="Selecione a unidade" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {unidades.map((u) => (
+                            <SelectItem key={u.id} value={String(u.id)}>
+                              {u.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="sga-unit"
+                        value={config.sgaUnitId}
+                        onChange={(e) => update({ sgaUnitId: e.target.value })}
+                        placeholder="ID da unidade (ex: 1)"
+                      />
+                    )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sga-int">Intervalo (ms)</Label>
+                    <Label htmlFor="sga-int">Intervalo de polling (ms)</Label>
                     <Input
                       id="sga-int"
                       type="number"
@@ -421,10 +516,26 @@ const Config = () => {
                   </div>
                 </div>
 
+                <div className="flex items-center gap-2 pt-2">
+                  <Button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={testing || !config.sgaUrl}
+                    variant="secondary"
+                  >
+                    {testing ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <PlugZap className="h-4 w-4 mr-2" />
+                    )}
+                    {testing ? "Conectando…" : "Testar conexão e listar unidades"}
+                  </Button>
+                </div>
+
                 <p className="text-xs text-muted-foreground">
-                  Token: <code className="font-mono">{config.sgaUrl || "<URL>"}/api/oauth/v2/token</code>
+                  Token: <code className="font-mono">{config.sgaUrl || "<URL>"}/api/token</code>
                   <br />
-                  Painel: <code className="font-mono">{config.sgaUrl || "<URL>"}/api/v1/unidades/{config.sgaUnitId}/painel</code>
+                  Painel: <code className="font-mono">{config.sgaUrl || "<URL>"}/api/unidades/{config.sgaUnitId}/painel?servicos=…</code>
                 </p>
 
                 <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-foreground">
@@ -439,61 +550,63 @@ const Config = () => {
 
             <Card>
               <CardHeader>
-                <CardTitle>Unidade & Serviços</CardTitle>
+                <CardTitle>Serviços chamados pelo painel</CardTitle>
                 <CardDescription>
-                  Informações puxadas em tempo real do servidor SGA conectado.
+                  Marque quais serviços da unidade selecionada o painel deve exibir.
+                  Se nenhum for marcado, todos os serviços da unidade são chamados.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {!config.sgaEnabled && (
-                  <p className="text-sm text-muted-foreground">
-                    Ative a conexão com o servidor para visualizar a unidade e serviços.
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={loadingServicos || !config.sgaUrl || !config.sgaUnitId}
+                  onClick={() => loadServicos(config.sgaUnitId)}
+                >
+                  {loadingServicos ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : null}
+                  Recarregar serviços
+                </Button>
+
+                {!servicosList && !snapshot.servicos?.length && (
+                  <p className="text-sm text-muted-foreground italic">
+                    Clique em "Testar conexão" acima para autenticar e listar os serviços.
                   </p>
                 )}
+
+                {(servicosList ?? snapshot.servicos ?? []).length > 0 && (
+                  <ul className="divide-y divide-border rounded-md border border-border bg-card">
+                    {(servicosList ?? (snapshot.servicos as any[]) ?? []).map((s: any) => {
+                      const id = Number(s.id ?? 0);
+                      const checked = id > 0 && config.sgaServices?.includes(id);
+                      return (
+                        <li
+                          key={`${id}-${s.sigla}`}
+                          className="flex items-center gap-3 px-3 py-2 text-sm"
+                        >
+                          {id > 0 && (
+                            <Checkbox
+                              checked={!!checked}
+                              onCheckedChange={() => toggleService(id)}
+                              aria-label={`Selecionar ${s.sigla}`}
+                            />
+                          )}
+                          <span className="inline-flex h-7 min-w-[2.5rem] items-center justify-center rounded bg-primary px-2 font-mono text-xs font-bold text-primary-foreground">
+                            {s.sigla || "—"}
+                          </span>
+                          <span className="truncate flex-1">{s.nome || "Sem nome"}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
                 {config.sgaEnabled && sgaError && (
-                  <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive-foreground">
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
                     {sgaError}
                   </div>
-                )}
-                {config.sgaEnabled && !sgaError && (
-                  <>
-                    <div className="space-y-1">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Unidade
-                      </Label>
-                      <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm font-medium">
-                        {snapshot.unidade ?? (
-                          <span className="text-muted-foreground italic">
-                            Aguardando dados do servidor…
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Serviços que o painel vai chamar
-                      </Label>
-                      {snapshot.servicos && snapshot.servicos.length > 0 ? (
-                        <ul className="divide-y divide-border rounded-md border border-border bg-card">
-                          {snapshot.servicos.map((s, i) => (
-                            <li
-                              key={`${s.sigla}-${i}`}
-                              className="flex items-center gap-3 px-3 py-2 text-sm"
-                            >
-                              <span className="inline-flex h-7 min-w-[2.5rem] items-center justify-center rounded bg-primary px-2 font-mono text-xs font-bold text-primary-foreground">
-                                {s.sigla || "—"}
-                              </span>
-                              <span className="truncate">{s.nome || "Sem nome"}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-sm text-muted-foreground italic">
-                          Aguardando lista de serviços do servidor…
-                        </p>
-                      )}
-                    </div>
-                  </>
                 )}
               </CardContent>
             </Card>

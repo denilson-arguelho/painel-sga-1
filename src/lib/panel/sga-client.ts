@@ -1,16 +1,27 @@
 /**
- * Cliente Novo SGA v2.1+ via OAuth2 (password grant) + polling REST.
+ * Cliente Novo SGA (compatível com o painel oficial v2.1+).
  *
- * Fluxo:
- *  1. POST {url}/api/oauth/v2/token com grant_type=password (client_id/secret + user/pass)
- *  2. GET  {url}/api/v1/unidades/{unitId}/painel  com Bearer token
- *  3. Refresh token automático antes de expirar.
+ * Endpoints (mesmos usados pelo painel oficial Electron):
+ *   POST  {server}/api/token                              -> OAuth2 password grant
+ *   GET   {server}/api/unidades                           -> lista unidades
+ *   GET   {server}/api/unidades/{unityId}/servicos        -> serviços da unidade
+ *   GET   {server}/api/unidades/{unityId}/painel?servicos=1,2,3
  *
- * Em modo demo (sem URL configurada), gera senhas simuladas para teste.
+ * O servidor responde a /painel com array de mensagens no formato:
+ *   { id, siglaSenha, numeroSenha, local, numeroLocal, prioridade, ... }
  */
 import type { Ticket } from "./types";
 
-export type SgaServico = { sigla: string; nome: string };
+export type SgaServico = {
+  id: number;
+  sigla: string;
+  nome: string;
+};
+
+export type SgaUnidade = {
+  id: number;
+  nome: string;
+};
 
 export type SgaSnapshot = {
   current: Ticket | null;
@@ -27,89 +38,49 @@ type SgaOptions = {
   password?: string;
   clientId?: string;
   clientSecret?: string;
+  /** IDs dos serviços que o painel deve chamar (vazio = todos). */
+  serviceIds?: number[];
   onSnapshot: (snap: SgaSnapshot) => void;
   onCall: (ticket: Ticket) => void;
   onError?: (err: Error) => void;
 };
 
+function pad(n: any, size: number) {
+  const s = "0".repeat(size) + String(n ?? "");
+  return s.slice(-size);
+}
+
+/**
+ * Normaliza uma mensagem do painel oficial Novo SGA.
+ * Formato: { id, siglaSenha, numeroSenha, local, numeroLocal, prioridade, peso, ... }
+ */
 function normalize(raw: any, idx = 0): Ticket | null {
   if (!raw) return null;
-  // Novo SGA v2.1+: senha vem em raw.senha = { sigla, numero }, local em raw.local, etc.
-  const senha = raw.senha ?? raw;
-  const prefix =
-    senha.sigla ?? raw.sigla ?? raw.prefix ?? raw.servicoSigla ?? raw.servico_sigla ?? "";
-  const numeroRaw = senha.numero ?? raw.numero ?? raw.number ?? "";
-  const number = String(numeroRaw).padStart(3, "0");
-  const place =
-    raw.local?.nome ?? raw.local ?? raw.guiche ?? raw.mesa ?? raw.place ?? "Atendimento";
-  const service = raw.servico?.nome ?? raw.servico ?? raw.service ?? "";
-  const priorityRaw = raw.prioridade?.nome ?? raw.prioridade ?? raw.priority ?? "";
-  const peso = raw.prioridade?.peso ?? raw.peso ?? 0;
+  const sigla = raw.siglaSenha ?? raw.senha?.sigla ?? raw.sigla ?? "";
+  const numero = raw.numeroSenha ?? raw.senha?.numero ?? raw.numero ?? "";
+  if (!sigla && numero === "") return null;
+  const number = pad(numero, 3);
+  const localNome = raw.local ?? raw.nomeLocal ?? raw.localNome ?? "Atendimento";
+  const numLocal = raw.numeroLocal ?? raw.numLocal ?? "";
+  const place = numLocal !== "" ? `${localNome} ${pad(numLocal, 2)}` : String(localNome);
+  const service = raw.servico ?? raw.nomeServico ?? "";
+  const prioridadeNome = String(raw.prioridade ?? raw.nomePrioridade ?? "").toLowerCase();
+  const peso = Number(raw.peso ?? raw.pesoPrioridade ?? 0);
   const priority: Ticket["priority"] =
-    String(priorityRaw).toLowerCase().includes("prior") || peso > 0
-      ? "prioridade"
-      : "normal";
-  if (!prefix && !numeroRaw) return null;
-  const calledAt = raw.dataChamada ?? raw.calledAt ?? new Date().toISOString();
-  const id = `${prefix}${number}-${calledAt}-${idx}`;
+    peso > 0 || prioridadeNome.includes("prior") ? "prioridade" : "normal";
+  const calledAt = raw.dataChamada ?? new Date().toISOString();
+  const id = `${raw.id ?? `${sigla}${number}`}-${calledAt}-${idx}`;
   return {
     id,
-    prefix: String(prefix),
+    prefix: String(sigla),
     number,
-    label: `${prefix}${number}`,
-    place: String(place),
+    label: `${sigla}${number}`,
+    place,
     service: String(service),
     priority,
     calledAt,
   };
 }
-
-function parseUnidadeServicos(data: any): { unidade?: string; servicos?: SgaServico[] } {
-  const payload = data?.data ?? data;
-  const unidade =
-    payload?.unidade?.nome ?? payload?.nomeUnidade ?? payload?.unidadeNome ?? undefined;
-  let servicosRaw: any[] | undefined;
-  if (Array.isArray(payload?.servicos)) servicosRaw = payload.servicos;
-  else if (Array.isArray(payload?.unidade?.servicos)) servicosRaw = payload.unidade.servicos;
-  const servicos = servicosRaw
-    ?.map((s: any) => ({
-      sigla: String(s.sigla ?? s.servico?.sigla ?? "").trim(),
-      nome: String(s.nome ?? s.servico?.nome ?? "").trim(),
-    }))
-    .filter((s) => s.sigla || s.nome);
-  return { unidade, servicos };
-}
-
-function parsePayload(data: any): SgaSnapshot {
-  // Novo SGA v2.1+: { data: { senhasChamadas: [...] } } ou { senhasChamadas: [...] }
-  const payload = data?.data ?? data;
-  const meta = parseUnidadeServicos(data);
-  const wrap = (snap: SgaSnapshot): SgaSnapshot => ({ ...snap, ...meta });
-  if (Array.isArray(payload?.senhasChamadas)) {
-    const tickets = payload.senhasChamadas
-      .map((r: any, i: number) => normalize(r, i))
-      .filter(Boolean) as Ticket[];
-    return wrap({ current: tickets[0] ?? null, last: tickets.slice(1) });
-  }
-  if (payload?.atual !== undefined || payload?.ultimas !== undefined) {
-    const current = normalize(payload.atual);
-    const last = (payload.ultimas ?? [])
-      .map((r: any, i: number) => normalize(r, i))
-      .filter(Boolean) as Ticket[];
-    return wrap({ current, last });
-  }
-  if (Array.isArray(payload?.tickets)) {
-    const tickets = payload.tickets.map((r: any, i: number) => normalize(r, i)).filter(Boolean) as Ticket[];
-    return wrap({ current: tickets[0] ?? null, last: tickets.slice(1) });
-  }
-  if (Array.isArray(payload)) {
-    const tickets = payload.map((r: any, i: number) => normalize(r, i)).filter(Boolean) as Ticket[];
-    return wrap({ current: tickets[0] ?? null, last: tickets.slice(1) });
-  }
-  return wrap({ current: null, last: [] });
-}
-
-type TokenInfo = { access_token: string; expires_at: number };
 
 function checkMixedContent(targetUrl: string): void {
   if (typeof window === "undefined") return;
@@ -117,8 +88,8 @@ function checkMixedContent(targetUrl: string): void {
   const targetHttp = targetUrl.toLowerCase().startsWith("http://");
   if (pageHttps && targetHttp) {
     throw new Error(
-      "Mixed Content bloqueado: o painel está em HTTPS mas o SGA está em HTTP. " +
-      "Solução: rode o painel na mesma rede via HTTP (npm run preview) ou exponha o SGA via HTTPS."
+      "Mixed Content bloqueado: o painel está em HTTPS mas o servidor SGA está em HTTP. " +
+        "Solução: rode o painel via HTTP na mesma rede (npm run preview) ou exponha o SGA via HTTPS."
     );
   }
 }
@@ -132,31 +103,49 @@ function isPrivateIp(url: string): boolean {
   }
 }
 
-async function fetchToken(opts: SgaOptions): Promise<TokenInfo> {
-  const base = opts.url.replace(/\/$/, "");
+function baseOf(url: string) {
+  return url.replace(/\/+$/, "");
+}
+
+type TokenInfo = { access_token: string; expires_at: number };
+
+/** OAuth2 password grant — endpoint oficial: POST {server}/api/token */
+async function fetchToken(opts: {
+  url: string;
+  username?: string;
+  password?: string;
+  clientId?: string;
+  clientSecret?: string;
+}): Promise<TokenInfo> {
+  const base = baseOf(opts.url);
   checkMixedContent(base);
+  if (!opts.clientId || !opts.clientSecret) throw new Error("Client ID/Secret obrigatórios");
+  if (!opts.username || !opts.password) throw new Error("Usuário/senha obrigatórios");
   const body = new URLSearchParams({
     grant_type: "password",
-    client_id: opts.clientId ?? "",
-    client_secret: opts.clientSecret ?? "",
-    username: opts.username ?? "",
-    password: opts.password ?? "",
+    client_id: opts.clientId,
+    client_secret: opts.clientSecret,
+    username: opts.username,
+    password: opts.password,
   });
   let res: Response;
   try {
-    res = await fetch(`${base}/api/oauth/v2/token`, {
+    res = await fetch(`${base}/api/token`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
       body,
     });
   } catch (e) {
     if (isPrivateIp(base)) {
       throw new Error(
         `Servidor inacessível (${base}). É um IP de rede local — o painel precisa rodar na mesma rede do SGA. ` +
-        `Faça build e abra via "npm run preview" no PC dentro da rede.`
+          `Faça build e abra via "npm run preview" no PC dentro da rede.`
       );
     }
-    throw new Error(`Falha de rede ao conectar em ${base}: ${(e as Error).message}`);
+    throw new Error(`Falha de rede ao conectar em ${base}/api/token: ${(e as Error).message}`);
   }
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
@@ -168,39 +157,97 @@ async function fetchToken(opts: SgaOptions): Promise<TokenInfo> {
   return { access_token: data.access_token, expires_at: Date.now() + ttl - 30_000 };
 }
 
+async function authedGet(base: string, path: string, token: string) {
+  const res = await fetch(`${base}${path}`, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`SGA ${res.status} em ${path}: ${txt || res.statusText}`);
+  }
+  return res.json();
+}
+
+/* ===== API pública para a tela de Configurações ===== */
+
+export type SgaCredentials = {
+  url: string;
+  username: string;
+  password: string;
+  clientId: string;
+  clientSecret: string;
+};
+
+export async function testConnection(c: SgaCredentials) {
+  const tok = await fetchToken(c);
+  const base = baseOf(c.url);
+  const data = await authedGet(base, `/api/unidades`, tok.access_token);
+  const unidades: SgaUnidade[] = (Array.isArray(data) ? data : data?.data ?? []).map((u: any) => ({
+    id: Number(u.id),
+    nome: String(u.nome ?? u.name ?? `Unidade ${u.id}`),
+  }));
+  return { token: tok.access_token, unidades };
+}
+
+export async function fetchServicos(
+  c: SgaCredentials,
+  unityId: string | number
+): Promise<SgaServico[]> {
+  const tok = await fetchToken(c);
+  const base = baseOf(c.url);
+  const data = await authedGet(
+    base,
+    `/api/unidades/${encodeURIComponent(String(unityId))}/servicos`,
+    tok.access_token
+  );
+  const list = Array.isArray(data) ? data : data?.data ?? [];
+  return list
+    .map((s: any) => ({
+      id: Number(s.servico?.id ?? s.id),
+      sigla: String(s.sigla ?? s.servico?.sigla ?? "").trim(),
+      nome: String(s.servico?.nome ?? s.nome ?? "").trim(),
+    }))
+    .filter((s: SgaServico) => s.id > 0);
+}
+
+/* ===== Polling em tempo real ===== */
+
 export function startSgaPolling(opts: SgaOptions): () => void {
   let stopped = false;
   let timer: number | undefined;
   let lastCurrentId: string | null = null;
   let token: TokenInfo | null = null;
+  let cachedServicos: SgaServico[] | null = null;
 
-  const useAuth = !!(opts.clientId && opts.clientSecret && opts.username && opts.password);
-
-  async function ensureToken(): Promise<string | null> {
-    if (!useAuth) return null;
+  async function ensureToken(): Promise<string> {
     if (!token || Date.now() >= token.expires_at) {
       token = await fetchToken(opts);
     }
     return token.access_token;
   }
 
-  let cachedMeta: { unidade?: string; servicos?: SgaServico[] } | null = null;
-
-  async function fetchMeta(access: string | null, base: string): Promise<typeof cachedMeta> {
-    if (cachedMeta) return cachedMeta;
+  async function loadServicosOnce(access: string, base: string): Promise<SgaServico[]> {
+    if (cachedServicos) return cachedServicos;
     try {
-      const headers: Record<string, string> = { Accept: "application/json" };
-      if (access) headers.Authorization = `Bearer ${access}`;
-      const res = await fetch(
-        `${base}/api/v1/unidades/${encodeURIComponent(opts.unitId)}`,
-        { headers }
+      const data = await authedGet(
+        base,
+        `/api/unidades/${encodeURIComponent(opts.unitId)}/servicos`,
+        access
       );
-      if (!res.ok) return null;
-      const data = await res.json();
-      cachedMeta = parseUnidadeServicos(data);
-      return cachedMeta;
+      const list = Array.isArray(data) ? data : data?.data ?? [];
+      cachedServicos = list
+        .map((s: any) => ({
+          id: Number(s.servico?.id ?? s.id),
+          sigla: String(s.sigla ?? s.servico?.sigla ?? "").trim(),
+          nome: String(s.servico?.nome ?? s.nome ?? "").trim(),
+        }))
+        .filter((s: SgaServico) => s.id > 0);
+      return cachedServicos;
     } catch {
-      return null;
+      return [];
     }
   }
 
@@ -208,29 +255,31 @@ export function startSgaPolling(opts: SgaOptions): () => void {
     if (stopped) return;
     try {
       const access = await ensureToken();
-      const base = opts.url.replace(/\/$/, "");
-      // Novo SGA v2.1+: /api/v1/unidades/{id}/painel; fallback compat: /api/v1/painel/{id}
-      const endpoint = useAuth
-        ? `${base}/api/v1/unidades/${encodeURIComponent(opts.unitId)}/painel`
-        : `${base}/api/v1/painel/${encodeURIComponent(opts.unitId)}`;
-      const headers: Record<string, string> = { Accept: "application/json" };
-      if (access) headers.Authorization = `Bearer ${access}`;
-      const res = await fetch(endpoint, { headers });
-      if (res.status === 401 && useAuth) {
-        token = null; // força refresh no próximo tick
-        throw new Error("SGA 401 — token inválido, renovando...");
+      const base = baseOf(opts.url);
+      const servicos = await loadServicosOnce(access, base);
+      // Se usuário não filtrou, usa todos os serviços da unidade.
+      const ids =
+        opts.serviceIds && opts.serviceIds.length > 0
+          ? opts.serviceIds
+          : servicos.map((s) => s.id);
+      const qs = ids.length ? `?servicos=${ids.join(",")}` : "";
+      const url = `${base}/api/unidades/${encodeURIComponent(opts.unitId)}/painel${qs}`;
+      const res = await fetch(url, {
+        headers: { Accept: "application/json", Authorization: `Bearer ${access}` },
+      });
+      if (res.status === 401) {
+        token = null;
+        throw new Error("SGA 401 — renovando token");
       }
       if (!res.ok) throw new Error(`SGA HTTP ${res.status}`);
       const data = await res.json();
-      const snap = parsePayload(data);
-      // Mescla metadados (unidade + serviços) — busca uma vez e cacheia.
-      if (!snap.unidade || !snap.servicos?.length) {
-        const meta = await fetchMeta(access, base);
-        if (meta) {
-          snap.unidade = snap.unidade ?? meta.unidade;
-          snap.servicos = snap.servicos?.length ? snap.servicos : meta.servicos;
-        }
-      }
+      const list: any[] = Array.isArray(data) ? data : data?.data ?? [];
+      const tickets = list.map((m, i) => normalize(m, i)).filter(Boolean) as Ticket[];
+      const snap: SgaSnapshot = {
+        current: tickets[0] ?? null,
+        last: tickets.slice(1, 6),
+        servicos,
+      };
       opts.onSnapshot(snap);
       if (snap.current && snap.current.id !== lastCurrentId) {
         lastCurrentId = snap.current.id;
@@ -251,7 +300,10 @@ export function startSgaPolling(opts: SgaOptions): () => void {
 }
 
 /** Gerador de senhas simuladas para modo demo. */
-export function startDemoTickets(onCall: (t: Ticket) => void, onSnapshot: (s: SgaSnapshot) => void): () => void {
+export function startDemoTickets(
+  onCall: (t: Ticket) => void,
+  onSnapshot: (s: SgaSnapshot) => void
+): () => void {
   const prefixes = ["RA", "RAX", "RET"];
   const places = ["Guichê 1", "Guichê 2", "Sala 1", "Sala 2"];
   const history: Ticket[] = [];
