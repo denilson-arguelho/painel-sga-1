@@ -85,6 +85,7 @@ export const DEFAULT_CONFIG: PanelConfig = {
   sgaPassword: "",
   sgaClientId: "",
   sgaClientSecret: "",
+  sgaServices: [],
   speechEnabled: true,
   chimeEnabled: true,
   speechRate: 0.95,
