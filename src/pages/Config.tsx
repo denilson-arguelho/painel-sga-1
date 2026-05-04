@@ -71,10 +71,76 @@ const Config = () => {
   const [config, update] = usePanelConfig();
   const { snapshot, error: sgaError } = usePanel();
   const [tab, setTab] = useState<"interface" | "media" | "sga" | "som">("interface");
+  const [testing, setTesting] = useState(false);
+  const [unidades, setUnidades] = useState<SgaUnidade[] | null>(null);
+  const [servicosList, setServicosList] = useState<SgaServico[] | null>(null);
+  const [loadingServicos, setLoadingServicos] = useState(false);
 
   useEffect(() => {
     document.title = "Configurações — Painel de Senhas";
   }, []);
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    setUnidades(null);
+    setServicosList(null);
+    try {
+      const { unidades } = await testConnection({
+        url: config.sgaUrl,
+        username: config.sgaUsername,
+        password: config.sgaPassword,
+        clientId: config.sgaClientId,
+        clientSecret: config.sgaClientSecret,
+      });
+      setUnidades(unidades);
+      toast({
+        title: "Conexão estabelecida ✅",
+        description: `${unidades.length} unidade(s) encontrada(s).`,
+      });
+      // Auto-carrega serviços se já houver unidade selecionada.
+      if (config.sgaUnitId) await loadServicos(config.sgaUnitId);
+    } catch (e) {
+      toast({
+        title: "Falha ao conectar",
+        description: (e as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const loadServicos = async (unityId: string) => {
+    setLoadingServicos(true);
+    try {
+      const list = await fetchServicos(
+        {
+          url: config.sgaUrl,
+          username: config.sgaUsername,
+          password: config.sgaPassword,
+          clientId: config.sgaClientId,
+          clientSecret: config.sgaClientSecret,
+        },
+        unityId
+      );
+      setServicosList(list);
+    } catch (e) {
+      toast({
+        title: "Erro ao listar serviços",
+        description: (e as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingServicos(false);
+    }
+  };
+
+  const toggleService = (id: number) => {
+    const current = new Set(config.sgaServices ?? []);
+    if (current.has(id)) current.delete(id);
+    else current.add(id);
+    update({ sgaServices: Array.from(current) });
+  };
 
   const testVoice = () => {
     unlockAudio();
