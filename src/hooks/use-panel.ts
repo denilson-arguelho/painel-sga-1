@@ -76,7 +76,7 @@ export function usePanel() {
     config.sgaPassword,
     config.sgaClientId,
     config.sgaClientSecret,
-    config.speechEnabled,
+    config.sgaServices,
     config.chimeEnabled,
     config.speechRate,
     config.speechVolume,
