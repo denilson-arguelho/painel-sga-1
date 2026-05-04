@@ -111,25 +111,12 @@ function normalize(raw: any, idx = 0): Ticket | null {
   };
 }
 
-function checkMixedContent(targetUrl: string): void {
-  if (typeof window === "undefined") return;
-  const pageHttps = window.location.protocol === "https:";
-  const targetHttp = targetUrl.toLowerCase().startsWith("http://");
-  if (pageHttps && targetHttp) {
-    throw new Error(
-      "Mixed Content bloqueado: o painel está em HTTPS mas o servidor SGA está em HTTP. " +
-        "Solução: rode o painel via HTTP na mesma rede (npm run preview) ou exponha o SGA via HTTPS."
-    );
-  }
+function checkMixedContent(_targetUrl: string): void {
+  // No-op: o proxy server-side resolve Mixed Content.
 }
 
-function isPrivateIp(url: string): boolean {
-  try {
-    const host = new URL(url).hostname;
-    return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|localhost$)/.test(host);
-  } catch {
-    return false;
-  }
+function isPrivateIp(_url: string): boolean {
+  return false;
 }
 
 function baseOf(url: string) {
@@ -138,7 +125,7 @@ function baseOf(url: string) {
 
 type TokenInfo = { access_token: string; expires_at: number };
 
-/** OAuth2 password grant — endpoint oficial: POST {server}/api/token */
+/** OAuth2 password grant via proxy — endpoint oficial: POST {server}/api/token */
 async function fetchToken(opts: {
   url: string;
   username?: string;
@@ -147,7 +134,6 @@ async function fetchToken(opts: {
   clientSecret?: string;
 }): Promise<TokenInfo> {
   const base = baseOf(opts.url);
-  checkMixedContent(base);
   if (!opts.clientId || !opts.clientSecret) throw new Error("Client ID/Secret obrigatórios");
   if (!opts.username || !opts.password) throw new Error("Usuário/senha obrigatórios");
   const body = new URLSearchParams({
@@ -156,10 +142,12 @@ async function fetchToken(opts: {
     client_secret: opts.clientSecret,
     username: opts.username,
     password: opts.password,
-  });
+  }).toString();
+
   let res: Response;
   try {
-    res = await fetch(`${base}/api/token`, {
+    res = await proxyFetch({
+      url: `${base}/api/token`,
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -168,16 +156,16 @@ async function fetchToken(opts: {
       body,
     });
   } catch (e) {
-    if (isPrivateIp(base)) {
-      throw new Error(
-        `Servidor inacessível (${base}). É um IP de rede local — o painel precisa rodar na mesma rede do SGA. ` +
-          `Faça build e abra via "npm run preview" no PC dentro da rede.`
-      );
-    }
-    throw new Error(`Falha de rede ao conectar em ${base}/api/token: ${(e as Error).message}`);
+    throw new Error(`Falha de rede no proxy SGA: ${(e as Error).message}`);
   }
+
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
+    if (res.status === 502) {
+      throw new Error(
+        `Servidor SGA inacessível em ${base}. Verifique se a URL está correta e se o servidor está online.`
+      );
+    }
     throw new Error(`OAuth ${res.status}: ${txt || res.statusText}`);
   }
   const data = await res.json();
@@ -187,7 +175,9 @@ async function fetchToken(opts: {
 }
 
 async function authedGet(base: string, path: string, token: string) {
-  const res = await fetch(`${base}${path}`, {
+  const res = await proxyFetch({
+    url: `${base}${path}`,
+    method: "GET",
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${token}`,
