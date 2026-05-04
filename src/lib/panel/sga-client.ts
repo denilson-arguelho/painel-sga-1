@@ -11,6 +11,35 @@
  *   { id, siglaSenha, numeroSenha, local, numeroLocal, prioridade, ... }
  */
 import type { Ticket } from "./types";
+import { supabase } from "@/integrations/supabase/client";
+
+/**
+ * Todas as requisições ao SGA passam pela Edge Function `sga-proxy`,
+ * que roda em HTTPS e faz a chamada server-side ao servidor SGA
+ * (mesmo que esteja em HTTP). Isso elimina o erro de Mixed Content
+ * e o bloqueio de CORS — exatamente como o painel oficial do Mangati
+ * funciona em produção.
+ */
+const PROXY_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sga-proxy`;
+const PROXY_AUTH = `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`;
+
+async function proxyFetch(target: {
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+}): Promise<Response> {
+  const res = await fetch(PROXY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: PROXY_AUTH,
+      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    },
+    body: JSON.stringify(target),
+  });
+  return res;
+}
 
 export type SgaServico = {
   id: number;
