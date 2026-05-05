@@ -85,6 +85,7 @@ const Config = () => {
     setTesting(true);
     setUnidades(null);
     setServicosList(null);
+    setDirectMode(!!config.sgaDirectConnection);
     try {
       const { unidades } = await testConnection({
         url: config.sgaUrl,
