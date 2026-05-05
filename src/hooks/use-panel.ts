@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePanelConfig } from "@/lib/panel/config-store";
 import { applyTheme } from "@/lib/panel/theme";
-import { startSgaPolling, startDemoTickets, type SgaSnapshot } from "@/lib/panel/sga-client";
+import { startSgaPolling, startDemoTickets, setDirectMode, type SgaSnapshot } from "@/lib/panel/sga-client";
 import { enqueueAnnouncement, primeVoices } from "@/lib/panel/voice-queue";
 import type { Ticket } from "@/lib/panel/types";
 
