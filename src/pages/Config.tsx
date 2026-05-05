@@ -114,6 +114,7 @@ const Config = () => {
 
   const loadServicos = async (unityId: string) => {
     setLoadingServicos(true);
+    setDirectMode(!!config.sgaDirectConnection);
     try {
       const list = await fetchServicos(
         {
