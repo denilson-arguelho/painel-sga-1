@@ -30,6 +30,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   testConnection,
   fetchServicos,
+  setDirectMode,
   type SgaUnidade,
   type SgaServico,
 } from "@/lib/panel/sga-client";
