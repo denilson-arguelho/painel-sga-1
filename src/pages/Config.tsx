@@ -532,6 +532,24 @@ const Config = () => {
                   </Button>
                 </div>
 
+                <div className="flex items-start gap-3 pt-2 rounded-md border bg-muted/30 p-3">
+                  <Switch
+                    id="sga-direct"
+                    checked={!!config.sgaDirectConnection}
+                    onCheckedChange={(v) => update({ sgaDirectConnection: v })}
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="sga-direct" className="cursor-pointer">
+                      Conexão direta (rede local)
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Ative quando o painel rodar na mesma rede do servidor SGA. O navegador chamará a API
+                      diretamente, sem passar pelo proxy da nuvem. Requer que o painel seja servido em HTTP
+                      (não HTTPS) caso o SGA não use SSL.
+                    </p>
+                  </div>
+                </div>
+
                 <p className="text-xs text-muted-foreground">
                   Token: <code className="font-mono">{config.sgaUrl || "<URL>"}/api/token</code>
                   <br />
