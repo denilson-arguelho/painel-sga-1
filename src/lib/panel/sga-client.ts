@@ -23,12 +23,25 @@ import { supabase } from "@/integrations/supabase/client";
 const PROXY_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sga-proxy`;
 const PROXY_AUTH = `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`;
 
+/** Quando true, próximas chamadas vão direto ao SGA (sem Edge Function). */
+let DIRECT_MODE = false;
+export function setDirectMode(v: boolean) {
+  DIRECT_MODE = v;
+}
+
 async function proxyFetch(target: {
   url: string;
   method?: string;
   headers?: Record<string, string>;
   body?: string;
 }): Promise<Response> {
+  if (DIRECT_MODE) {
+    return fetch(target.url, {
+      method: target.method ?? "GET",
+      headers: target.headers,
+      body: target.body,
+    });
+  }
   const res = await fetch(PROXY_URL, {
     method: "POST",
     headers: {
