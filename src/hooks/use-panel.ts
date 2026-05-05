@@ -48,6 +48,7 @@ export function usePanel() {
     };
 
     if (config.sgaEnabled && config.sgaUrl) {
+      setDirectMode(!!config.sgaDirectConnection);
       const stop = startSgaPolling({
         url: config.sgaUrl,
         unitId: config.sgaUnitId,
