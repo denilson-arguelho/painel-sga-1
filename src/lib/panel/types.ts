@@ -55,6 +55,8 @@ export type PanelConfig = {
   sgaClientSecret: string;
   /** IDs dos serviços que o painel deve chamar (vazio = todos da unidade). */
   sgaServices: number[];
+  /** Conexão direta (navegador → SGA), sem passar pela Edge Function. Use quando o painel rodar na mesma rede local do servidor SGA. */
+  sgaDirectConnection: boolean;
 
   /** Áudio. */
   speechEnabled: boolean;
@@ -86,6 +88,7 @@ export const DEFAULT_CONFIG: PanelConfig = {
   sgaClientId: "",
   sgaClientSecret: "",
   sgaServices: [],
+  sgaDirectConnection: false,
   speechEnabled: true,
   chimeEnabled: true,
   speechRate: 0.95,
